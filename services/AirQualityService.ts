@@ -31,7 +31,7 @@ export class AirQualityService {
       const fields = 'sensor_index,latitude,longitude,pm2.5,pm2.5_10minute,pm2.5_30minute,last_seen';
       const url = `${this.BASE_URL}/sensors?fields=${fields}&nwlat=${nwLat}&selat=${seLat}&nwlng=${nwLng}&selng=${seLng}`;
 
-      console.log('Fetching from URL:', url);
+    //   console.log('Fetching from URL:', url);
 
       const response = await fetch(url, {
         headers: {
@@ -46,7 +46,6 @@ export class AirQualityService {
       }
 
       const data = await response.json();
-      console.log('Raw API response:', data);
 
       const sensors = data.data.map((sensorData: any[]) => ({
         sensor_index: sensorData[0],
@@ -67,11 +66,10 @@ export class AirQualityService {
           sensor.longitude
         );
         const isWithinRadius = distance <= radius;
-        console.log(`Sensor at (${sensor.latitude}, ${sensor.longitude}) is ${distance}m away. Within radius: ${isWithinRadius}`);
+        // console.log(`Sensor at (${sensor.latitude}, ${sensor.longitude}) is ${distance}m away. Within radius: ${isWithinRadius}`);
         return isWithinRadius;
       });
 
-      console.log('Filtered sensors:', filteredSensors);
       return filteredSensors;
 
     } catch (error) {
