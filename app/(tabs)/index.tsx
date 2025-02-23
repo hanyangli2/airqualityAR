@@ -7,7 +7,7 @@ import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol.ios';
-import AirQualityWidget from './AirQualityWidget';
+import AirQualityWidget from '../AirQualityWidget';
 
 export default function HomeScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
