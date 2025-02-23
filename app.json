@@ -38,6 +38,13 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to find nearby air quality sensors.",
+          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to find nearby air quality sensors."
+        }
       ]
     ],
     "experiments": {
