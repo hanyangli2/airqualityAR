@@ -72,16 +72,17 @@ export class ARArrow {
     // Position the arrow on a fixed ring around the user
     this.arrow.position.set(
       Math.sin(sensorBearing) * radius,
-      0,
-      -Math.cos(sensorBearing) * radius  // Negative for correct orientation
+      -1,  // Lower the arrows 1 unit below eye level
+      -Math.cos(sensorBearing) * radius
     );
     
-    // Rotate the arrow to point toward the sensor (fixed in world space)
-    this.arrow.rotation.y = sensorBearing;
+    // Rotate the arrow to point toward the sensor
+    this.arrow.rotation.y = sensorBearing + Math.PI;
 
     // Debug logging
     console.log(`Arrow ${this.sensorData.sensor_index} update:`, {
       bearing: THREE.MathUtils.radToDeg(sensorBearing),
+      rotation: THREE.MathUtils.radToDeg(this.arrow.rotation.y),
       position: this.arrow.position.toArray(),
       sensorLocation: {
         lat: this.sensorData.latitude,
