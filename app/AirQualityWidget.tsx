@@ -9,16 +9,20 @@ import * as Location from 'expo-location';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const MAP_SIZE = SCREEN_WIDTH * 0.3;
-const CACHE_TIME = 30 * 60 * 1000; // Cache data for 30 minutes
-const mockAQI = 175;
+const CACHE_TIME = 30 * 60 * 1000; 
 const mockLocation = "New York, NY";
 
+
 export function AirQualityWidget() {
-  const [aqi] = useState(mockAQI);
+  const [aqi, setAQI] = useState<number | null>(null);
   const [location, setLocation] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [weather, setWeather] = useState<{ temp: string; icon: string } | null>(null);
+  const [weather, setWeather] = useState<{ temp: string; icon: string; humidity: string; description: string } | null>(null);
+  const [sensors, setSensors] = useState<PurpleAirSensor[]>([]);
+  const [lastFetched, setLastFetched] = useState<number>(0);
+  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
 
   useEffect(() => {
     (async () => {
@@ -32,6 +36,7 @@ export function AirQualityWidget() {
 
         let position = await Location.getCurrentPositionAsync({});
         let address = await Location.reverseGeocodeAsync(position.coords);
+        setCurrentLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude });
 
         if (address.length > 0) {
           setLocation(`${address[0].city}, ${address[0].region}`);
@@ -54,7 +59,9 @@ export function AirQualityWidget() {
       const data = await response.json();
       const temp = data.data.current_condition[0].temp_F;
       const icon = data.data.current_condition[0].weatherIconUrl[0].value;
-      setWeather({ temp, icon });
+      const humidity = data.data.current_condition[0].humidity;
+      const description = data.data.current_condition[0].weatherDesc[0].value;
+      setWeather({ temp, icon, humidity, description });
     } catch (err) {
       console.error('Error fetching weather:', err);
     }
@@ -77,79 +84,67 @@ export function AirQualityWidget() {
       if (aqi <= 300) return 'exclamation-triangle'; 
       return 'biohazard'; 
     };
-  // const [sensors, setSensors] = useState<PurpleAirSensor[]>([]);
-  // const [currentLocation] = useState({
-  //   latitude: 40.7128,
-  //   longitude: -74.0060
-  // });
-  // const [lastFetched, setLastFetched] = useState<number>(0);
-
-  // const fetchData = async () => {
-  //   try {
-  //     const nearbySensors = await airQualityService.getNearestSensors(currentLocation, 5000);
-  //     setSensors(nearbySensors);
-  //     setLastFetched(Date.now());
-  //     console.log('Fetched sensors:', nearbySensors);
-  //   } catch (error) {
-  //     console.error('Failed to fetch sensors:', error);
-  //   }
-  // };
-
-  // // Use effect for data fetching
-  // useEffect(() => {
-    
-  //   const currentTime = Date.now();
-
-  //   // Check if cached data is still valid (within the last CACHE_TIME)
-  //   if (currentTime - lastFetched > CACHE_TIME) {
-  //     fetchData();
-  //   } else {
-  //     console.log('Using cached data.');
-  //   }
-
-  //   const interval = setInterval(() => {
-  //     if (currentTime - lastFetched > CACHE_TIME) {
-  //       fetchData();
-  //     }
-  //   }, 10 * 60 * 1000); // Check every 10 minutes
-
-  //   return () => clearInterval(interval);
-  // }, [currentLocation, lastFetched]);
-
-  // const getAverageAQI = () => {
-  //   if (sensors.length === 0) return 0;
-  //   const totalAQI = sensors.reduce((sum, sensor) => sum + sensor.pm2_5, 0);
-  //   return totalAQI / sensors.length;
-  // };
+    useEffect(() => {
+      if (currentLocation) {
+        fetchData();
+      }
+    }, [currentLocation]);
+  
+    const fetchData = async () => {
+      if (!currentLocation) return;
+  
+      try {
+        const nearbySensors = await airQualityService.getNearestSensors(currentLocation, 5000);
+        const avgAQI = getAverageAQI(nearbySensors);
+  
+        setAQI(avgAQI);
+        setLastFetched(Date.now());
+      } catch (error) {
+        console.error('Failed to fetch AQI:', error);
+        setError('Failed to fetch AQI');
+      }
+    };
+  
+    const getAverageAQI = (sensors: PurpleAirSensor[]) => {
+      if (sensors.length === 0) return null;
+      const totalAQI = sensors.reduce((sum, sensor) => sum + sensor.pm2_5, 0);
+      return Math.round(totalAQI / sensors.length);
+    };
 
   return (
-    <Card style={[styles.container, { borderLeftColor: getAQIColor(aqi) }]}> 
+    <Card style={[styles.container, { borderColor: getAQIColor(aqi) }]}>
       <Card.Content>
         {loading ? (
           <ActivityIndicator size="small" color="#555" />
         ) : error ? (
-          <Text variant="bodyMedium" style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>{error}</Text>
         ) : (
-          <Text variant="titleMedium" style={styles.locationText}>{location}</Text>
+          <Text style={styles.locationText}>{location || 'Unknown Location'}</Text>
         )}
-        
-        <View style={styles.row}>
-          <FontAwesome5 name={getAQIIcon(aqi)} size={40} color={getAQIColor(aqi)} style={styles.icon} />
-          <Text variant="headlineLarge" style={styles.aqiText}>AQI: {aqi}</Text>
-        </View>
-        {weather && (
-          <View style={styles.weatherRow}>
-            <Image source={{ uri: weather.icon as string }} style={styles.weatherIcon} />
-            <Text style={styles.weatherText}>{weather.temp}°F</Text>
+
+      <View style={styles.contentRow}>
+          {/* AQI Section */}
+          <View style={styles.aqiContainer}>
+            <FontAwesome5 name={getAQIIcon(aqi)} size={50} color={getAQIColor(aqi)} />
+            <Text style={styles.aqiText}>AQI: {aqi}</Text>
           </View>
-        )}
+
+          {/* Weather Section */}
+          {weather && (
+            <View style={styles.weatherContainer}>
+              <Image source={{ uri: weather.icon }} style={styles.weatherIcon} />
+              <Text style={styles.weatherText}>{weather.temp}°F</Text>
+              <Text style={styles.weatherDetails}>{weather.description}</Text>
+              <Text style={styles.weatherDetails}>Humidity: {weather.humidity}%</Text>
+
+            </View>
+          )}
+        </View>
       </Card.Content>
-      <Card.Actions>
-        <IconButton icon="refresh" size={24} onPress={() => {}} />
-      </Card.Actions>
     </Card>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {
@@ -158,45 +153,56 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignSelf: 'center',
     marginVertical: 10,
-    elevation: 3,
-    borderLeftWidth: 5,
+    elevation: 5,
+    borderLeftWidth: 6,
+    backgroundColor: '#f9f9f9',
   },
   locationText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 5,
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 10,
+    color: '#333',
   },
   errorText: {
     fontSize: 14,
     color: 'red',
     fontStyle: 'italic',
-    marginBottom: 5,
+    textAlign: 'center',
   },
-  row: {
+  contentRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  aqiContainer: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    flex: 1,
   },
   aqiText: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginLeft: 10,
+    marginTop: 5,
+    color: '#333',
   },
-  icon: {
-    marginRight: 10,
-  },
-  weatherRow: {
-    flexDirection: 'row',
+  weatherContainer: {
+    flex: 1,
     alignItems: 'center',
-    marginTop: 10,
   },
   weatherIcon: {
-    width: 40,
-    height: 40,
-    marginRight: 10,
+    width: 50,
+    height: 50,
+    marginBottom: 5,
   },
   weatherText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
+    color: '#333',
+  },
+  weatherDetails: {
+    fontSize: 14,
+    color: '#555',
   },
 });
 
