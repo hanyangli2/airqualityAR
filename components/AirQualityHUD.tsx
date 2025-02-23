@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { StyleSheet, View, Dimensions, Platform, TouchableOpacity, Animated } from 'react-native';
 import { ThemedText } from './ThemedText';
-import * as Location from 'expo-location';
 import { airQualityService, PurpleAirSensor } from '../services/AirQualityService';
 import * as Location from 'expo-location';
 import MapView from 'react-native-maps';

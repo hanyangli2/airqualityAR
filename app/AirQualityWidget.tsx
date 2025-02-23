@@ -13,6 +13,7 @@ const CACHE_TIME = 30 * 60 * 1000;
 const mockLocation = "New York, NY";
 
 
+
 export function AirQualityWidget() {
   const [aqi, setAQI] = useState<number | null>(null);
   const [location, setLocation] = useState<string | null>(null);
