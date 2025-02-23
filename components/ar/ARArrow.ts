@@ -82,7 +82,7 @@ export class ARArrow {
       -Math.cos(sensorBearing) * radius
     );
     
-    this.arrow.rotation.y = sensorBearing + Math.PI;
+    this.arrow.rotation.y = sensorBearing + Math.PI + Math.PI / 2 - Math.PI / 2 - Math.PI / 2 + 0.175;
 
     console.log(`Arrow ${this.sensorData.sensor_index} update:`, {
       bearing: THREE.MathUtils.radToDeg(sensorBearing),
