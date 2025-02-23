@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Dimensions, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Dimensions, ActivityIndicator, Image } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { airQualityService, PurpleAirSensor } from '../services/AirQualityService';
 import { Card, Text, IconButton } from 'react-native-paper';
 import * as Location from 'expo-location';
-
 
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -19,6 +18,7 @@ export function AirQualityWidget() {
   const [location, setLocation] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [weather, setWeather] = useState<{ temp: string; icon: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -35,6 +35,7 @@ export function AirQualityWidget() {
 
         if (address.length > 0) {
           setLocation(`${address[0].city}, ${address[0].region}`);
+          fetchWeather(position.coords.latitude, position.coords.longitude);
         } else {
           setError('Unable to get location');
         }
@@ -44,6 +45,20 @@ export function AirQualityWidget() {
       setLoading(false);
     })();
   }, []);
+
+  const fetchWeather = async (lat: number, lon: number) => {
+    try {
+      const response = await fetch(
+        `https://api.worldweatheronline.com/premium/v1/weather.ashx?key=${WEATHER_API_KEY}&q=${lat},${lon}&format=json`
+      );
+      const data = await response.json();
+      const temp = data.data.current_condition[0].temp_F;
+      const icon = data.data.current_condition[0].weatherIconUrl[0].value;
+      setWeather({ temp, icon });
+    } catch (err) {
+      console.error('Error fetching weather:', err);
+    }
+  };
 
     const getAQIColor = (aqi) => {
       if (aqi <= 50) return '#00E400'; // Good (Green)
@@ -122,6 +137,12 @@ export function AirQualityWidget() {
           <FontAwesome5 name={getAQIIcon(aqi)} size={40} color={getAQIColor(aqi)} style={styles.icon} />
           <Text variant="headlineLarge" style={styles.aqiText}>AQI: {aqi}</Text>
         </View>
+        {weather && (
+          <View style={styles.weatherRow}>
+            <Image source={{ uri: weather.icon as string }} style={styles.weatherIcon} />
+            <Text style={styles.weatherText}>{weather.temp}°F</Text>
+          </View>
+        )}
       </Card.Content>
       <Card.Actions>
         <IconButton icon="refresh" size={24} onPress={() => {}} />
@@ -162,6 +183,20 @@ const styles = StyleSheet.create({
   },
   icon: {
     marginRight: 10,
+  },
+  weatherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  weatherIcon: {
+    width: 40,
+    height: 40,
+    marginRight: 10,
+  },
+  weatherText: {
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
 
