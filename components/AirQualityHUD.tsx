@@ -43,7 +43,6 @@ export function AirQualityHUD({ sensors, currentLocation, heading, locationError
     setExpanded(!expanded);
   }, [expanded, mapSize, opacity]);
 
-  // Show error or loading state if location isn't available
   if (locationError) {
     return (
       <View style={styles.container}>
@@ -65,14 +64,11 @@ export function AirQualityHUD({ sensors, currentLocation, heading, locationError
   }
 
   const getRelativePosition = (sensor: PurpleAirSensor) => {
-    // Get the current map size value
     const currentMapSize = expanded ? EXPANDED_MAP_SIZE : COMPACT_MAP_SIZE;
     
-    // Calculate the visible region bounds based on the map's current state
     const latDelta = expanded ? 0.05 : 0.02;
     const lngDelta = expanded ? 0.05 : 0.02;
     
-    // Calculate the relative position within the visible region
     const relativeX = (sensor.longitude - (currentLocation?.longitude ?? 0)) / lngDelta + 0.5;
     const relativeY = (sensor.latitude - (currentLocation?.latitude ?? 0)) / latDelta + 0.5;
 
@@ -240,7 +236,7 @@ const styles = StyleSheet.create({
   },
   sensorContainer: {
     position: 'absolute',
-    width: 40,  // Larger container for gradient effect
+    width: 40,  
     height: 40,
     marginLeft: -20,
     marginTop: -20,
@@ -261,7 +257,7 @@ const styles = StyleSheet.create({
   },
   sensorDot: {
     position: 'absolute',
-    width: 8,  // Small center dot
+    width: 8, 
     height: 8,
     borderRadius: 4,
     borderWidth: 1,

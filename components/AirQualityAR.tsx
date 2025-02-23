@@ -175,15 +175,12 @@ export function AirQualityAR({
   const handleTouch = (event: any) => {
     if (!sceneRef.current || !cameraRef.current) return;
 
-    // Convert touch coordinates to normalized device coordinates (-1 to +1)
     const touch = event.nativeEvent;
     touchPosition.x = (touch.locationX / Dimensions.get('window').width) * 2 - 1;
     touchPosition.y = -(touch.locationY / Dimensions.get('window').height) * 2 + 1;
 
-    // Update the picking ray with the camera and touch position
     raycaster.setFromCamera(touchPosition, cameraRef.current);
 
-    // Calculate objects intersecting the picking ray
     const intersects = raycaster.intersectObjects(sceneRef.current.children, true);
 
     if (intersects.length > 0) {

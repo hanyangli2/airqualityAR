@@ -19,7 +19,6 @@ export class ARBall {
     this.sensorData = sensorData;
     this.ball = this.createBall();
     
-    // Make the ball interactive
     this.ball.userData = {
       type: 'sensor',
       sensorData: this.sensorData

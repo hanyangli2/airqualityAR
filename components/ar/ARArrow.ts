@@ -19,13 +19,11 @@ export class ARArrow {
     this.sensorData = sensorData;
     this.arrow = this.createArrow();
     
-    // Make the arrow interactive
     this.arrow.userData = {
       type: 'sensor',
       sensorData: this.sensorData
     };
 
-    // Make all child meshes interactive too
     this.arrow.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.userData = {
@@ -57,7 +55,6 @@ export class ARArrow {
     arrowGroup.add(shaft);
     arrowGroup.add(head);
 
-    // Add debug name
     arrowGroup.name = `arrow-${this.sensorData.sensor_index}`;
     
     return arrowGroup;
