@@ -9,104 +9,16 @@ import { DeviceMotion } from 'expo-sensors';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const MAP_SIZE = SCREEN_WIDTH * 0.3;
 
-export function AirQualityHUD() {
-  const [sensors, setSensors] = useState<PurpleAirSensor[]>([]);
-  const [currentLocation, setCurrentLocation] = useState<{latitude: number, longitude: number} | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const [heading, setHeading] = useState<number>(0);
+interface AirQualityHUDProps {
+  sensors: PurpleAirSensor[];
+  currentLocation: {latitude: number, longitude: number} | null;
+  heading: number;
+  locationError: string | null;
+}
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        
-        if (status !== 'granted') {
-          setLocationError('Location permission denied');
-          return;
-        }
-
-        const initialLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced
-        });
-        
-        setCurrentLocation({
-          latitude: initialLocation.coords.latitude,
-          longitude: initialLocation.coords.longitude
-        });
-
-        const locationSubscription = await Location.watchPositionAsync(
-          {
-            accuracy: Location.Accuracy.Balanced,
-            timeInterval: 5000,
-            distanceInterval: 10
-          },
-          (location) => {
-            setCurrentLocation({
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude
-            });
-          }
-        );
-
-        return () => {
-          locationSubscription.remove();
-        };
-      } catch (error) {
-        setLocationError(error instanceof Error ? error.message : 'Failed to get location');
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    // Only fetch sensors if we have a location
-    if (!currentLocation) return;
-
-    const fetchData = async () => {
-      try {
-        const nearbySensors = await airQualityService.getNearestSensors(currentLocation, 2000);
-        setSensors(nearbySensors);
-      } catch (error) {
-        console.error('Failed to fetch sensors:', error);
-      }
-    };
-
-    fetchData();
-    const interval = setInterval(fetchData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [currentLocation]);
-
-  useEffect(() => {
-    let subscription: { remove: () => void; } | null = null;
-
-    const startHeadingUpdates = async () => {
-      try {
-        // Request permission if needed (iOS)
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          console.error('Permission to access location was denied');
-          return;
-        }
-
-        // Start watching heading
-        subscription = await Location.watchHeadingAsync((heading) => {
-          // heading.trueHeading is the direction relative to true north (0-360 degrees)
-          // heading.magHeading is the direction relative to magnetic north
-          // Use trueHeading if available, fall back to magHeading
-          const newHeading = heading.trueHeading ?? heading.magHeading;
-          setHeading(newHeading);
-        });
-      } catch (error) {
-        console.error('Error setting up heading updates:', error);
-      }
-    };
-
-    startHeadingUpdates();
-
-    return () => {
-      subscription?.remove();
-    };
-  }, []);
-
+export function AirQualityHUD({ sensors, currentLocation, heading, locationError }: AirQualityHUDProps) {
+  // Remove all the useEffects and states that are now handled by the parent
+  
   // Show error or loading state if location isn't available
   if (locationError) {
     return (

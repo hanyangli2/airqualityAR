@@ -1,144 +1,152 @@
 import { GLView } from 'expo-gl';
-import { WebGLRenderer, PerspectiveCamera, Scene, SphereGeometry, MeshStandardMaterial, Mesh, AmbientLight, DirectionalLight } from 'three';
-import { ExpoWebGLRenderingContext } from 'expo-gl';
-import * as Location from 'expo-location';
-import { DeviceMotion } from 'expo-sensors';
-import { PurpleAirSensor } from '../services/AirQualityService';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet } from 'react-native';
+import * as THREE from 'three';
 
-interface Props {
+import { ARArrow } from './ar/ARArrow';
+import { PurpleAirSensor } from '@/services/AirQualityService';
+
+// Extend WebGLRenderingContext to include Expo-specific methods
+interface ExpoWebGLRenderingContext extends WebGLRenderingContext {
+  endFrameEXP: () => void;
+}
+
+interface AirQualityARProps {
   sensors: PurpleAirSensor[];
   currentLocation: {
     latitude: number;
     longitude: number;
   };
+  heading: number;
 }
 
-const getAQIColor = (pm25: number): number => {
-  if (pm25 <= 12.0) return 0x00ff00; // Green
-  if (pm25 <= 35.4) return 0xffff00; // Yellow
-  if (pm25 <= 55.4) return 0xff9900; // Orange
-  if (pm25 <= 150.4) return 0xff0000; // Red
-  if (pm25 <= 250.4) return 0x990066; // Purple
-  return 0x660000; // Maroon
-};
-
-export function AirQualityAR({ sensors, currentLocation }: Props) {
-  console.log('AirQualityAR mounted with:', { 
-    sensorCount: sensors.length,
-    currentLocation,
+export function AirQualityAR({ sensors, currentLocation, heading }: AirQualityARProps) {
+  const [arArrows, setArArrows] = useState<ARArrow[]>([]);
+  const [scene] = useState(() => new THREE.Scene());
+  const [camera] = useState(() => {
+    const cam = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+    cam.position.set(0, 0, 0); // Camera at the origin at eye level
+    return cam;
   });
 
+  // Create a ref to store the current heading
+  const headingRef = useRef(heading);
+
+  // Update the ref whenever heading changes
+  useEffect(() => {
+    headingRef.current = heading;
+    console.log('Heading updated:', heading);
+  }, [heading]);
+
+  // Debug: Log when sensors change
+  useEffect(() => {
+    console.log('Sensors updated:', {
+      count: sensors.length,
+      sensorIds: sensors.map(s => s.sensor_index),
+      sensorLocations: sensors.map(s => ({
+        id: s.sensor_index,
+        lat: s.latitude,
+        lon: s.longitude
+      }))
+    });
+  }, [sensors]);
+
+  useEffect(() => {
+    // Create arrows for each sensor
+    const newArrows = sensors.map(sensor => new ARArrow(sensor));
+    
+    // Debug: Log arrow creation
+    console.log('Creating arrows:', {
+      arrowCount: newArrows.length,
+      sensorIds: sensors.map(s => s.sensor_index)
+    });
+
+    setArArrows(newArrows);
+
+    // Add arrows to the scene
+    newArrows.forEach(arrow => {
+      scene.add(arrow.getMesh());
+    });
+
+    return () => {
+      // Cleanup: remove arrows from scene
+      newArrows.forEach(arrow => {
+        scene.remove(arrow.getMesh());
+      });
+    };
+  }, [sensors, scene]);
+
+  // Update arrow positions when location changes
+  useEffect(() => {
+    if (currentLocation) {
+      arArrows.forEach(arrow => {
+        arrow.update(currentLocation);
+      });
+    }
+  }, [currentLocation, arArrows]);
+
   const onContextCreate = async (gl: ExpoWebGLRenderingContext) => {
-    console.log('GL Context created');
-    
-    // Initialize Three.js scene
-    const scene = new Scene();
-    const camera = new PerspectiveCamera(
-      75,
-      gl.drawingBufferWidth / gl.drawingBufferHeight,
-      0.1,
-      2000 // Increased far plane to see distant sensors
-    );
-    
-    // Set up renderer
-    const renderer = new WebGLRenderer({ 
+    const renderer = new THREE.WebGLRenderer({
       canvas: gl.canvas as any,
-      context: gl as any,
-      alpha: true 
+      context: gl,
+      alpha: true,
     });
     renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
+    
+    camera.aspect = gl.drawingBufferWidth / gl.drawingBufferHeight;
+    camera.updateProjectionMatrix();
 
-    // Add lights
-    const ambientLight = new AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-    const directionalLight = new DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(1, 1, 1);
-    scene.add(directionalLight);
-
-    // Convert GPS to AR coordinates
-    function gpsToARCoordinates(sensorLat: number, sensorLong: number): [number, number, number] {
-      // Calculate distance and bearing
-      const R = 6371000; // Earth's radius in meters
-      const lat1 = currentLocation.latitude * Math.PI / 180;
-      const lat2 = sensorLat * Math.PI / 180;
-      const deltaLat = (sensorLat - currentLocation.latitude) * Math.PI / 180;
-      const deltaLong = (sensorLong - currentLocation.longitude) * Math.PI / 180;
-
-      const a = Math.sin(deltaLat/2) * Math.sin(deltaLat/2) +
-                Math.cos(lat1) * Math.cos(lat2) *
-                Math.sin(deltaLong/2) * Math.sin(deltaLong/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      const distance = R * c;
-
-      // Calculate bearing
-      const y = Math.sin(deltaLong) * Math.cos(lat2);
-      const x = Math.cos(lat1) * Math.sin(lat2) -
-                Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLong);
-      const bearing = Math.atan2(y, x);
-
-      // Convert to AR coordinates (X = East/West, Y = Up/Down, Z = North/South)
-      const arX = distance * Math.sin(bearing);
-      const arZ = -distance * Math.cos(bearing); // Negative because Z is inverted in Three.js
-      const arY = 10; // Fixed height above ground
-
-      // Scale down the world (1 meter = 0.1 units in AR)
-      return [arX * 0.1, arY, arZ * 0.1];
-    }
-
-    // Add debug sphere at origin to verify rendering works
-    const debugGeometry = new SphereGeometry(1, 32, 32);
-    const debugMaterial = new MeshStandardMaterial({ color: 0xff0000 });
-    const debugSphere = new Mesh(debugGeometry, debugMaterial);
-    debugSphere.position.set(0, 0, -10); // 10 units in front of camera
-    scene.add(debugSphere);
-    console.log('Added debug sphere');
-
-    // Create sensor spheres
-    sensors.forEach(sensor => {
-      const geometry = new SphereGeometry(2, 32, 32);
-      const material = new MeshStandardMaterial({
-        color: getAQIColor(sensor.pm2_5),
-        transparent: true,
-        opacity: 0.8,
-        emissive: getAQIColor(sensor.pm2_5),
-        emissiveIntensity: 0.3,
-      });
-      const sphere = new Mesh(geometry, material);
-      
-      // Position the sphere based on GPS coordinates
-      const [x, y, z] = gpsToARCoordinates(sensor.latitude, sensor.longitude);
-      console.log(`Sensor position calculation:`, {
-        sensor: {
-          lat: sensor.latitude,
-          lng: sensor.longitude,
-        },
-        arPosition: { x, y, z }
-      });
-      sphere.position.set(x, y, z);
-      
-      scene.add(sphere);
+    console.log('Camera settings:', {
+      fov: camera.fov,
+      aspect: camera.aspect,
+      near: camera.near,
+      far: camera.far,
+      position: camera.position.toArray()
     });
 
-    // Position and configure camera
-    camera.position.set(0, 1.6, 0); // Average human height
-    camera.lookAt(0, 1.6, -1); // Look forward
-    console.log('Camera configured:', {
-      position: camera.position,
-      rotation: camera.rotation
-    });
-
-    // Update camera rotation based on device motion
-    DeviceMotion.addListener(({ rotation }) => {
-      if (rotation) {
-        camera.rotation.x = rotation.beta * (Math.PI / 180);
-        camera.rotation.y = rotation.gamma * (Math.PI / 180);
-        camera.rotation.z = rotation.alpha * (Math.PI / 180);
-      }
-    });
-
-    // Render loop
+    let frameCount = 0;
+    let lastLoggedHeading = headingRef.current;
+    
     const render = () => {
       requestAnimationFrame(render);
+      
+      const currentHeading = headingRef.current;
+      camera.rotation.y = THREE.MathUtils.degToRad(-currentHeading);
+      
+      const cameraDir = new THREE.Vector3();
+      camera.getWorldDirection(cameraDir);
+
+      if (frameCount % 60 === 0 || lastLoggedHeading !== currentHeading) {
+        console.log('Render loop state:', {
+          heading: currentHeading,
+          cameraRotation: camera.rotation.y,
+          cameraDirection: cameraDir.toArray()
+        });
+        lastLoggedHeading = currentHeading;
+      }
+      
+      arArrows.forEach(arrow => {
+        const arrowWorldPos = new THREE.Vector3();
+        arrow.getMesh().getWorldPosition(arrowWorldPos);
+        const toArrow = arrowWorldPos.clone().sub(camera.position).normalize();
+        
+        // Calculate dot product here
+        const dotProduct = cameraDir.dot(toArrow);
+        
+        // Use dot product for visibility
+        arrow.getMesh().visible = dotProduct > 0;
+
+        if (frameCount % 60 === 0) {
+          console.log(`Arrow ${arrow.getMesh().name} state:`, {
+            position: arrowWorldPos.toArray(),
+            dotProduct,
+            visible: arrow.getMesh().visible,
+            heading: currentHeading
+          });
+        }
+      });
+      
+      frameCount++;
       renderer.render(scene, camera);
       gl.endFrameEXP();
     };
@@ -147,8 +155,14 @@ export function AirQualityAR({ sensors, currentLocation }: Props) {
 
   return (
     <GLView
-      style={{ flex: 1 }}
+      style={StyleSheet.absoluteFill}
       onContextCreate={onContextCreate}
     />
   );
-} 
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});
