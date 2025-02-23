@@ -1,12 +1,12 @@
 import { GLView } from 'expo-gl';
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, TouchableOpacity, View, Text, Dimensions } from 'react-native';
 import * as THREE from 'three';
 
+import { ARBall } from './ar/ARBall';
 import { ARArrow } from './ar/ARArrow';
 import { PurpleAirSensor } from '@/services/AirQualityService';
 
-// Extend WebGLRenderingContext to include Expo-specific methods
 interface ExpoWebGLRenderingContext extends WebGLRenderingContext {
   endFrameEXP: () => void;
 }
@@ -18,27 +18,41 @@ interface AirQualityARProps {
     longitude: number;
   };
   heading: number;
+  pitch?: number;
+  onSensorSelect?: (sensorData: PurpleAirSensor) => void;
 }
 
-export function AirQualityAR({ sensors, currentLocation, heading }: AirQualityARProps) {
-  const [arArrows, setArArrows] = useState<ARArrow[]>([]);
+type ViewMode = 'ball' | 'arrow';
+
+export function AirQualityAR({ 
+  sensors, 
+  currentLocation, 
+  heading,
+  pitch = 0,
+  onSensorSelect,
+}: AirQualityARProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>('ball');
+  const [arObjects, setArObjects] = useState<(ARBall | ARArrow)[]>([]);
   const [scene] = useState(() => new THREE.Scene());
   const [camera] = useState(() => {
-    const cam = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-    cam.position.set(0, 0, 0); // Camera at the origin at eye level
+    const cam = new THREE.PerspectiveCamera(75, 1, 0.1, 3000);
+    cam.position.set(0, 0, 0);
     return cam;
   });
 
-  // Create a ref to store the current heading
   const headingRef = useRef(heading);
+  const pitchRef = useRef(pitch);
 
-  // Update the ref whenever heading changes
+  const raycaster = new THREE.Raycaster();
+  const touchPosition = new THREE.Vector2();
+  const sceneRef = useRef<THREE.Scene>();
+  const cameraRef = useRef<THREE.Camera>();
+
   useEffect(() => {
     headingRef.current = heading;
-    console.log('Heading updated:', heading);
-  }, [heading]);
+    pitchRef.current = pitch;
+  }, [heading, pitch]);
 
-  // Debug: Log when sensors change
   useEffect(() => {
     console.log('Sensors updated:', {
       count: sensors.length,
@@ -49,41 +63,31 @@ export function AirQualityAR({ sensors, currentLocation, heading }: AirQualityAR
         lon: s.longitude
       }))
     });
-  }, [sensors]);
 
-  useEffect(() => {
-    // Create arrows for each sensor
-    const newArrows = sensors.map(sensor => new ARArrow(sensor));
-    
-    // Debug: Log arrow creation
-    console.log('Creating arrows:', {
-      arrowCount: newArrows.length,
-      sensorIds: sensors.map(s => s.sensor_index)
-    });
+    const newObjects = sensors.map(sensor => 
+      viewMode === 'ball' ? new ARBall(sensor) : new ARArrow(sensor)
+    );
 
-    setArArrows(newArrows);
+    setArObjects(newObjects);
 
-    // Add arrows to the scene
-    newArrows.forEach(arrow => {
-      scene.add(arrow.getMesh());
+    newObjects.forEach(obj => {
+      scene.add(obj.getMesh());
     });
 
     return () => {
-      // Cleanup: remove arrows from scene
-      newArrows.forEach(arrow => {
-        scene.remove(arrow.getMesh());
+      newObjects.forEach(obj => {
+        scene.remove(obj.getMesh());
       });
     };
-  }, [sensors, scene]);
+  }, [sensors, scene, viewMode]);
 
-  // Update arrow positions when location changes
   useEffect(() => {
     if (currentLocation) {
-      arArrows.forEach(arrow => {
-        arrow.update(currentLocation);
+      arObjects.forEach(obj => {
+        obj.update(currentLocation);
       });
     }
-  }, [currentLocation, arArrows]);
+  }, [currentLocation, arObjects]);
 
   const onContextCreate = async (gl: ExpoWebGLRenderingContext) => {
     const renderer = new THREE.WebGLRenderer({
@@ -111,58 +115,123 @@ export function AirQualityAR({ sensors, currentLocation, heading }: AirQualityAR
       requestAnimationFrame(render);
       
       const currentHeading = headingRef.current;
+      const currentPitch = pitchRef.current;
+
       camera.rotation.y = THREE.MathUtils.degToRad(-currentHeading);
+      camera.rotation.x = THREE.MathUtils.degToRad(-currentPitch);
       
       const cameraDir = new THREE.Vector3();
       camera.getWorldDirection(cameraDir);
 
-      if (frameCount % 60 === 0 || lastLoggedHeading !== currentHeading) {
-        console.log('Render loop state:', {
-          heading: currentHeading,
-          cameraRotation: camera.rotation.y,
-          cameraDirection: cameraDir.toArray()
-        });
-        lastLoggedHeading = currentHeading;
-      }
-      
-      arArrows.forEach(arrow => {
-        const arrowWorldPos = new THREE.Vector3();
-        arrow.getMesh().getWorldPosition(arrowWorldPos);
-        const toArrow = arrowWorldPos.clone().sub(camera.position).normalize();
+      arObjects.forEach(obj => {
+        const objPos = new THREE.Vector3();
+        obj.getMesh().getWorldPosition(objPos);
         
-        // Calculate dot product here
-        const dotProduct = cameraDir.dot(toArrow);
+        const toObj = objPos.clone().sub(camera.position).normalize();
         
-        // Use dot product for visibility
-        arrow.getMesh().visible = dotProduct > 0;
+        const dotProduct = cameraDir.dot(toObj);
+        
+        const verticalAngle = Math.atan2(objPos.y - camera.position.y, 
+          Math.sqrt(Math.pow(objPos.x - camera.position.x, 2) + 
+                   Math.pow(objPos.z - camera.position.z, 2)));
+        
+        const fovY = THREE.MathUtils.degToRad(camera.fov);
+        const inVerticalFOV = Math.abs(verticalAngle + THREE.MathUtils.degToRad(currentPitch)) < fovY/2;
+        
+        obj.getMesh().visible = dotProduct > 0 && inVerticalFOV;
 
         if (frameCount % 60 === 0) {
-          console.log(`Arrow ${arrow.getMesh().name} state:`, {
-            position: arrowWorldPos.toArray(),
+          console.log(`Object ${obj.getMesh().name} state:`, {
+            position: objPos.toArray(),
             dotProduct,
-            visible: arrow.getMesh().visible,
+            verticalAngle: THREE.MathUtils.radToDeg(verticalAngle),
+            pitch: currentPitch,
+            visible: obj.getMesh().visible,
             heading: currentHeading
           });
         }
       });
+
+      if (frameCount % 60 === 0 || lastLoggedHeading !== currentHeading) {
+        console.log('Render loop state:', {
+          heading: currentHeading,
+          pitch: currentPitch,
+          cameraRotation: camera.rotation.toArray(),
+          cameraDirection: cameraDir.toArray()
+        });
+        lastLoggedHeading = currentHeading;
+      }
       
       frameCount++;
       renderer.render(scene, camera);
       gl.endFrameEXP();
     };
     render();
+
+    sceneRef.current = scene;
+    cameraRef.current = camera;
+  };
+
+  const handleTouch = (event: any) => {
+    if (!sceneRef.current || !cameraRef.current) return;
+
+    // Convert touch coordinates to normalized device coordinates (-1 to +1)
+    const touch = event.nativeEvent;
+    touchPosition.x = (touch.locationX / Dimensions.get('window').width) * 2 - 1;
+    touchPosition.y = -(touch.locationY / Dimensions.get('window').height) * 2 + 1;
+
+    // Update the picking ray with the camera and touch position
+    raycaster.setFromCamera(touchPosition, cameraRef.current);
+
+    // Calculate objects intersecting the picking ray
+    const intersects = raycaster.intersectObjects(sceneRef.current.children, true);
+
+    if (intersects.length > 0) {
+      const selectedObject = intersects[0].object;
+      if (selectedObject.userData?.type === 'sensor') {
+        onSensorSelect?.(selectedObject.userData.sensorData);
+      }
+    }
   };
 
   return (
-    <GLView
-      style={StyleSheet.absoluteFill}
-      onContextCreate={onContextCreate}
-    />
+    <View style={styles.container}>
+      <TouchableOpacity 
+        onPress={handleTouch}
+        style={StyleSheet.absoluteFill}
+      >
+        <GLView
+          style={StyleSheet.absoluteFill}
+          onContextCreate={onContextCreate}
+        />
+      </TouchableOpacity>
+      <TouchableOpacity 
+        style={styles.toggleButton}
+        onPress={() => setViewMode(current => current === 'ball' ? 'arrow' : 'ball')}
+      >
+        <Text style={styles.toggleText}>
+          {viewMode === 'ball' ? '🔄 Switch to Arrows' : '🔄 Switch to Balls'}
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  toggleButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 10,
+    borderRadius: 8,
+    zIndex: 1,
+  },
+  toggleText: {
+    color: 'white',
+    fontSize: 16,
   },
 });
