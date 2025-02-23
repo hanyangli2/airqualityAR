@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Dimensions } from 'react-native';
 import { ThemedText } from './ThemedText';
+import * as Location from 'expo-location';
 import { airQualityService, PurpleAirSensor } from '../services/AirQualityService';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -12,6 +13,8 @@ export function AirQualityHUD() {
     latitude: 40.783058,
     longitude: -73.971252
   });
+
+  
 
   useEffect(() => {
     const fetchData = async () => {
